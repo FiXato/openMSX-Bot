@@ -58,7 +58,7 @@ def feed_entry_report(entry)
     commit_message_sanitised = commit_message_lines.first
     commit_message_sanitised += '[...]' if shortened
     message = <<-COMMIT_EOS
-[SVN][#{repo}] #{CONTROL_CODES[:colour]}3#{COMMITTERS[committer]||committer}#{CONTROL_CODES[:normal]} committed revision#{CONTROL_CODES[:colour]}3 #{revision}#{CONTROL_CODES[:normal]}.
+[SVN][#{CONTROL_CODES[:bold]}#{repo}#{CONTROL_CODES[:normal]}] #{CONTROL_CODES[:colour]}3#{COMMITTERS[committer]||committer}#{CONTROL_CODES[:normal]} committed revision#{CONTROL_CODES[:colour]}3 #{revision}#{CONTROL_CODES[:normal]}.
 #{CONTROL_CODES[:bold]}#{commit_message_sanitised}#{CONTROL_CODES[:normal]}
 #{files_changed.size} file#{'s' if files_changed.size != 1} changed: #{files_changed[0,5].join(', ')}#{" and #{files_changed.size - 5} others" if files_changed.size > 5}.
     COMMIT_EOS
