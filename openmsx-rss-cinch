@@ -25,68 +25,134 @@ include CinchExt
 # <description><![CDATA[manuelbi created the openMSX 0.9.1 released news entry]]></description>
 # <content:encoded><![CDATA[<p>2012-09-30 14:33:54 - <strong>manuelbi created the openMSX 0.9.1 released news entry</strong></p>]]></content:encoded>
 # <pubDate>Sun, 30 Sep 2012 21:33:54 +0000</pubDate>
-
-TIMEOUT = 60
-COMMITTERS = {
-  'bifimsx' => 'BiFi',
-  'm9710797' => 'Wouter',
-  'manuelbi' => 'Quibus',
-  'vampier'  => 'Vampier',
-  'mthuurne' => 'mth',
-}
-def feed_entry_report(entry)
-  if matchdata = entry.title.match(/(\S+) committed revision (\d+) to the (.+) SVN repository(, changing (\d) files)?/)
-    type = :commit
-    committer = matchdata[1]
-    revision = matchdata[2]
-    repo = matchdata[3]
-    number_of_files_changed = (matchdata[5]||0)
-    svn_log = ''
-    svn_url = "https://openmsx.svn.sourceforge.net/svnroot/openmsx/#{repo.downcase}/trunk"
-    cmd = "svn log -v --xml --with-all-revprops -r #{revision} #{svn_url}"
-    Timeout::timeout(TIMEOUT) {
-      svn_log = Nokogiri::XML(`#{cmd}`)
-    }
-    files_changed = svn_log.css('path').map{|el|"[#{el['action']}] '#{el.text}'"}
-    commit_message = svn_log.css('logentry msg').text
-    commit_message_lines = commit_message.split("\n").select{|l|!l.empty?}
-    # shortened = commit_message_lines.size > 3 ? true : false
-    # sanitised_commit_message_lines = commit_message_lines[0,3].map{|line|line.split(/.{200}/).join("\n")}.join("\n").split("\n")
-    # shortened ||= sanitised_commit_message_lines.size > 3 ? true : false
-    # commit_message_sanitised = sanitised_commit_message_lines[0,3].join("\n")
-    shortened = commit_message_lines.size > 1 ? true : false
-    commit_message_sanitised = commit_message_lines.first
-    commit_message_sanitised += '[...]' if shortened
-    message = <<-COMMIT_EOS
-[SVN][#{CONTROL_CODES[:bold]}#{repo}#{CONTROL_CODES[:normal]}] #{CONTROL_CODES[:colour]}3#{COMMITTERS[committer]||committer}#{CONTROL_CODES[:normal]} committed revision#{CONTROL_CODES[:colour]}3 #{revision}#{CONTROL_CODES[:normal]}.
-#{CONTROL_CODES[:bold]}#{commit_message_sanitised}#{CONTROL_CODES[:normal]}
-#{files_changed.size} file#{'s' if files_changed.size != 1} changed: #{files_changed[0,5].join(', ')}#{" and #{files_changed.size - 5} others" if files_changed.size > 5}.
-    COMMIT_EOS
-  elsif matchdata = entry.title.match(/(\S+) made (\d+) file-release changes/)
-    type = :file_release_change
-    committer = matchdata[1]
-    number_of_changes = matchdata[2]
-    message = "[PROJECT] #{COMMITTERS[committer]} made #{number_of_changes} file-release changes."
-  elsif matchdata = entry.title.match(/(\S+) created the (.+) news entry/)
-    type = :new_news_entry
-    committer = matchdata[1]
-    news_entry_title = matchdata[2]
-    message = "[NEWS] #{COMMITTERS[committer]} created a news entry titled: #{news_entry_title}."
-  else
-    type = :unknown
-    message = "[UNKNOWN] #{entry.title}"
+class RssMonitor
+  attr_accessor :recipient, :bot, :last_entry
+  TIMEOUT = 60
+  COMMITTERS = {
+    'bifimsx' => 'BiFi',
+    'm9710797' => 'Wouter',
+    'manuelbi' => 'Quibus',
+    'vampier'  => 'Vampier',
+    'mthuurne' => 'mth',
+  }
+  def feed_entry_report(entry)
+    if matchdata = entry.title.match(/(\S+) committed revision (\d+) to the (.+) SVN repository(, changing (\d) files)?/)
+      type = :commit
+      committer = matchdata[1]
+      revision = matchdata[2]
+      repo = matchdata[3]
+      number_of_files_changed = (matchdata[5]||0)
+      svn_log = ''
+      svn_url = "https://openmsx.svn.sourceforge.net/svnroot/openmsx/#{repo.downcase}/trunk"
+      cmd = "svn log -v --xml --with-all-revprops -r #{revision} #{svn_url}"
+      Timeout::timeout(TIMEOUT) {
+        svn_log = Nokogiri::XML(`#{cmd}`)
+      }
+      files_changed = svn_log.css('path').map{|el|"[#{el['action']}] '#{el.text}'"}
+      commit_message = svn_log.css('logentry msg').text
+      commit_message_lines = commit_message.split("\n").select{|l|!l.empty?}
+      # shortened = commit_message_lines.size > 3 ? true : false
+      # sanitised_commit_message_lines = commit_message_lines[0,3].map{|line|line.split(/.{200}/).join("\n")}.join("\n").split("\n")
+      # shortened ||= sanitised_commit_message_lines.size > 3 ? true : false
+      # commit_message_sanitised = sanitised_commit_message_lines[0,3].join("\n")
+      shortened = commit_message_lines.size > 1 ? true : false
+      commit_message_sanitised = commit_message_lines.first
+      commit_message_sanitised += '[...]' if shortened
+      message = <<-COMMIT_EOS
+  [SVN][#{CONTROL_CODES[:bold]}#{repo}#{CONTROL_CODES[:normal]}] #{CONTROL_CODES[:colour]}3#{COMMITTERS[committer]||committer}#{CONTROL_CODES[:normal]} committed revision#{CONTROL_CODES[:colour]}3 #{revision}#{CONTROL_CODES[:normal]}.
+  #{CONTROL_CODES[:bold]}#{commit_message_sanitised}#{CONTROL_CODES[:normal]}
+  #{files_changed.size} file#{'s' if files_changed.size != 1} changed: #{files_changed[0,5].join(', ')}#{" and #{files_changed.size - 5} others" if files_changed.size > 5}.
+      COMMIT_EOS
+    elsif matchdata = entry.title.match(/(\S+) made (\d+) file-release changes/)
+      type = :file_release_change
+      committer = matchdata[1]
+      number_of_changes = matchdata[2]
+      message = "[PROJECT] #{COMMITTERS[committer]} made #{number_of_changes} file-release changes."
+    elsif matchdata = entry.title.match(/(\S+) created the (.+) news entry/)
+      type = :new_news_entry
+      committer = matchdata[1]
+      news_entry_title = matchdata[2]
+      message = "[NEWS] #{COMMITTERS[committer]} created a news entry titled: #{news_entry_title}."
+    else
+      type = :unknown
+      p entry
+      message = "[UNKNOWN] #{entry.title}"
+    end
+    response = "[#{entry.published.to_s.strip}] #{message.strip}\n"
+    response += entry.url
+    response
   end
-  response = "[#{entry.published}] #{message}\n"
-  response += entry.url
-  response
+
+  def report_last_entry
+    feed_entry_report(@last_entry).strip
+  end
+
+  def reply_msg(msg)
+    puts msg
+    if bot
+      bot.channels.last.msg msg
+    end
+    unless @recipient
+      puts "'#{@recipient}' recipient no longer available"
+      return
+    end
+    @recipient.reply(msg)
+  end
+
+  def monitor_rss
+    @feed = Feedzirra::Feed.fetch_and_parse("https://sourceforge.net/export/rss2_keepsake.php?group_id=38274")
+    if @feed.kind_of?(Fixnum)
+      reply_msg "Error with feed: #{@feed}"
+    else
+      @last_entry = @feed.entries.first
+      reply_msg "Last entry was: "
+      reply_msg feed_entry_report(@last_entry).strip
+    end
+    $thread = Thread.new do
+      loop do 
+        begin
+          # @recipient.reply "Updating feed"
+          puts "Updating feed"
+          updated_feed = Feedzirra::Feed.update(@feed)
+          # @recipient.reply updated_feed
+          puts updated_feed
+          if updated_feed.kind_of?(Fixnum)
+            puts "Error with feed: #{updated_feed}"
+          elsif updated_feed.new_entries.size > 0
+            # @recipient.reply "#{updated_feed.new_entries.size} new entries found!"
+            puts "#{updated_feed.new_entries.size} new entries found!"
+            @last_entry = updated_feed.entries.first
+            updated_feed.new_entries.reverse.each do |entry|
+              message = feed_entry_report(entry).to_s.strip
+              reply_msg message unless message.to_s.empty?
+            end
+            @feed = updated_feed
+            @feed.new_entries = []
+          else
+            puts "#{updated_feed.new_entries.size} no new entries found :("
+            # @recipient.reply "#{updated_feed.new_entries.size} no new entries found :("
+          end
+          puts "Slept for #{sleep (3 * 60)}"
+        rescue Exception => e
+          puts e.class.name
+          puts e.message
+          puts e
+          puts e.backtrace
+        end
+      end
+    end
+  end
 end
 
+$rss_monitor = RssMonitor.new
+$rss_monitor.monitor_rss
 bot = Cinch::Bot.new do
   configure do |c|
     c.server = "irc.freenode.org"
     c.nick = "openMSX"
-    c.channels = ["#openmsx"]
+    c.channels = ["#openmsx", '#nomedia']
   end
+
   on :message, "!svn" do |m|
     m.reply "openMSX: svn co https://openmsx.svn.sourceforge.net/svnroot/openmsx openmsx"
     m.reply "openMSX Debugger: svn co https://openmsx.svn.sourceforge.net/svnroot/openmsx openmsx-debugger"
@@ -106,36 +172,37 @@ bot = Cinch::Bot.new do
   on :message, "!handlers" do |m|
     m.bot.handlers.each{|h| m.reply h.to_s}
   end
-  on :message, "!start rss monitoring" do |m|
-    if @thread && @thread.alive?
-      m.reply "Hello, #{m.user.nick}. The RSS feed is already being monitored."
+
+  on :message, "!last rss" do |m|
+    if $rss_monitor.last_entry
+      m.reply $rss_monitor.report_last_entry
     else
-      @feed = Feedzirra::Feed.fetch_and_parse("https://sourceforge.net/export/rss2_keepsake.php?group_id=38274")
-      if @feed.kind_of?(Fixnum)
-        m.reply "Error with feed: #{@feed}"
-      else
-        m.reply "Last entry was: "
-        m.reply feed_entry_report(@feed.entries.first)
-      end
-      @thread = Thread.new do
-        loop do 
-          # m.reply "Updating feed"
-          updated_feed = Feedzirra::Feed.update(@feed)
-          # m.reply updated_feed
-          if updated_feed.new_entries.size > 0
-            m.reply "#{updated_feed.new_entries.size} new entries found!"
-            updated_feed.new_entries.reverse.each do |entry|
-              m.reply feed_entry_report(entry)
-            end
-          else
-            # m.reply "#{updated_feed.new_entries.size} no new entries found :("
-          end
-          sleep (5 * 60)
-        end
-      end
+      m.reply "No last rss feed entry found. Maybe start RSS monitoring first."
     end
   end
-end
 
+  on :message, "!start silent rss monitoring" do |m|
+    $rss_monitor.recipient = m.dup
+    m.reply "Started"
+    # if $thread && $thread.alive?
+    #   m.reply "Hello, #{m.user.nick}. The RSS feed is already being monitored. Current thread status: #{$thread.status}"
+    # else
+    #   Thread.new{monitor_rss}
+    # end
+  end
+
+  on :message, "!start rss monitoring" do |m|
+    $rss_monitor.recipient = m.dup
+    # if $thread && $thread.alive?
+      # m.reply "Hello, #{m.user.nick}. The RSS feed is already being monitored. Current thread status: #{$thread.status}"
+      if $rss_monitor.last_entry
+        m.reply $rss_monitor.report_last_entry
+      else
+        m.reply "No last rss feed entry found."
+      end
+    # end
+  end
+end
+$rss_monitor.bot = bot
 bot.start
 
