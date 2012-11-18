@@ -111,13 +111,14 @@ class RssMonitor
   end
 
   def update_buildlog
-    new_buildlog = open("http://108.67.190.32/buildlog").read.strip
+    new_buildlog = open("http://vampier.fixato.org/buildlog/error.txt").read.strip
+    # new_buildlog = open("http://fixato.org/test.txt").read.strip
     @buildlog = new_buildlog if new_buildlog #Don't update the buildlog if there is an error
   end
 
   # Returns true when buildlog was updated
   def buildlog_updated?
-    old_buildlog = @buildlog
+    old_buildlog = buildlog
     update_buildlog
     buildlog && buildlog != old_buildlog
   end
@@ -142,11 +143,12 @@ class RssMonitor
           # @recipient.reply "Updating feed"
           puts "Updating feed"
           updated_feed = Feedzirra::Feed.update(@feed)
-          # puts "Updating Vampier buildlog"
-          # if buildlog_updated?
-          #   last_error = File.readlines(buildlog).first.split(':').last rescue nil
-          #   reply_msg("Vampier's build system detected an error while compiling: #{last_error}") if last_error
-          # end
+          puts "Updating Vampier buildlog"
+          if buildlog_updated?
+            last_error = buildlog.split("\n").first.to_i rescue nil
+            puts "buildlog: #{buildlog} -- rev: #{last_error}"
+            reply_msg("Windows Build System detected an error while compiling revision #{last_error}: http://vampier.fixato.org/buildlog/openMSXCompileRevision-#{last_error}.log") if last_error > 0
+          end
 
           # @recipient.reply updated_feed
           puts updated_feed
@@ -255,7 +257,7 @@ bot = Cinch::Bot.new do
   end
 
   on :message, "!keys" do |m|
-    m.reply "The default keymappings for PC and Mac are listed at http://openmsx.sourceforge.net/manual/user.html#keyboard"
+    m.reply "The default keymappings for PC, Mac and Dingoo are listed at http://openmsx.sourceforge.net/manual/user.html#keyboard"
   end
 
   on :message, "!renderers" do |m|
