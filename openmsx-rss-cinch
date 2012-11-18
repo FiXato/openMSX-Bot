@@ -226,7 +226,7 @@ bot = Cinch::Bot.new do
   end
 
   on :message, "!help" do |m|
-    m.reply "Available commands: !svn, !latest, !daily, !last rss, !compilation guide, !faq, !commands, !setup guide, !roms, !diskmanipulator, !catapult, !keys, !renderers"
+    m.reply "Available commands: !svn, !latest, !daily, !last rss, !compilation guide, !faq, !commands, !setup guide, !roms, !diskmanipulator, !catapult, !keys, !renderers, !docs, !manual"
   end
 
   on :message, "!last rss" do |m|
