@@ -209,7 +209,7 @@ bot = Cinch::Bot.new do
   end
 
   on :message, "!help" do |m|
-    m.reply "Available commands: !svn, !latest, !daily, !last rss"
+    m.reply "Available commands: !svn, !latest, !daily, !last rss, !compilation guide, !faq, !commands, !setup guide, !roms, !diskmanipulator, !catapult, !keys, !renderers"
   end
 
   on :message, "!last rss" do |m|
@@ -220,6 +220,42 @@ bot = Cinch::Bot.new do
     end
   end
 
+  on :message, "!compilation guide" do |m|
+    m.reply "The compilation guide can be found at: http://openmsx.sourceforge.net/manual/compile.html"
+  end
+
+  on :message, "!faq" do |m|
+    m.reply "The Frequently Asked Questions and their answers can be found at: http://openmsx.sourceforge.net/manual/faq.html"
+  end
+
+  on :message, "!commands" do |m|
+    m.reply "An overview of the console commands is available at: http://openmsx.sourceforge.net/manual/commands.html"
+  end
+
+  on :message, "!setup guide" do |m|
+    m.reply "The setup guide can be found at: http://openmsx.sourceforge.net/manual/setup.html"
+  end
+
+  on :message, "!roms" do |m|
+    m.reply "openMSX only comes with the C-BIOS system roms: http://openmsx.sourceforge.net/manual/faq.html#c-bios"
+    m.reply "Why? Read http://openmsx.sourceforge.net/manual/faq.html#roms"
+  end
+
+  on :message, "!diskmanipulator" do |m|
+    m.reply "The diskmanipulator manual is available at http://openmsx.sourceforge.net/manual/diskmanipulator.html"
+  end
+
+  on :message, "!catapult" do |m|
+    m.reply "Catapult has its own manual and compilation guide at http://openmsx.sourceforge.net/catapult-manual/"
+  end
+
+  on :message, "!keys" do |m|
+    m.reply "The default keymappings for PC and Mac are listed at http://openmsx.sourceforge.net/manual/user.html#keyboard"
+  end
+
+  on :message, "!renderers" do |m|
+    m.reply "Information about the renderers is available at http://openmsx.sourceforge.net/manual/user.html#renderers"
+  end
   # on :message, "!start silent rss monitoring" do |m|
   #   $rss_monitor.recipient = m.dup
   #   m.reply "Started"
