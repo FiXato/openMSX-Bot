@@ -34,7 +34,13 @@ class RssMonitor
     'manuelbi' => 'Quibus',
     'vampier'  => 'Vampier',
     'mthuurne' => 'mth',
+    'fixato'   => 'Filip H.F. "FiXato" Slagter'
   }
+
+  def committer_name(committer)
+    COMMITTERS[committer]||committer
+  end
+
   def feed_entry_report(entry)
     if matchdata = entry.title.match(/(\S+) committed revision (\d+) to the (.+) SVN repository(, changing (\d) files)?/)
       type = :commit
@@ -59,7 +65,7 @@ class RssMonitor
       commit_message_sanitised = commit_message_lines.first
       commit_message_sanitised += '[...]' if shortened
       message = <<-COMMIT_EOS
-  [SVN][#{CONTROL_CODES[:bold]}#{repo}#{CONTROL_CODES[:normal]}] #{CONTROL_CODES[:colour]}3#{COMMITTERS[committer]||committer}#{CONTROL_CODES[:normal]} committed revision#{CONTROL_CODES[:colour]}3 #{revision}#{CONTROL_CODES[:normal]}.
+  [SVN][#{CONTROL_CODES[:bold]}#{repo}#{CONTROL_CODES[:normal]}] #{CONTROL_CODES[:colour]}3#{committer_name(committer)}#{CONTROL_CODES[:normal]} committed revision#{CONTROL_CODES[:colour]}3 #{revision}#{CONTROL_CODES[:normal]}.
   #{CONTROL_CODES[:bold]}#{commit_message_sanitised}#{CONTROL_CODES[:normal]}
   #{files_changed.size} file#{'s' if files_changed.size != 1} changed: #{files_changed[0,5].join(', ')}#{" and #{files_changed.size - 5} others" if files_changed.size > 5}.
       COMMIT_EOS
@@ -67,12 +73,17 @@ class RssMonitor
       type = :file_release_change
       committer = matchdata[1]
       number_of_changes = matchdata[2]
-      message = "[PROJECT] #{COMMITTERS[committer]} made #{number_of_changes} file-release changes."
+      message = "[PROJECT] #{committer_name(committer)} made #{number_of_changes} file-release changes."
     elsif matchdata = entry.title.match(/(\S+) created the (.+) news entry/)
       type = :new_news_entry
       committer = matchdata[1]
       news_entry_title = matchdata[2]
-      message = "[NEWS] #{COMMITTERS[committer]} created a news entry titled: #{news_entry_title}."
+      message = "[NEWS] #{committer_name(committer)} created a news entry titled: #{news_entry_title}."
+    elsif matchdata = entry.title.match(/(\S+) commented on the (.+) forum thread/)
+      type = :new_forum_reply
+      committer = matchdata[1]
+      forum_reply_title = matchdata[2]
+      message = "[FORUM] #{committer_name(committer)} replied to the forum thread: #{forum_reply_title}."
     else
       type = :unknown
       p entry
@@ -90,13 +101,30 @@ class RssMonitor
   def reply_msg(msg)
     puts msg
     if bot
-      bot.channels.last.msg msg
+      bot.channels.each{|channel|puts channel.to_s.downcase; channel.msg msg if %w[#openmsx #nomedia].include?(channel.to_s.downcase)}
     end
-    unless @recipient
-      puts "'#{@recipient}' recipient no longer available"
-      return
-    end
-    @recipient.reply(msg)
+    # unless @recipient
+    #   puts "'#{@recipient}' recipient no longer available"
+    #   return
+    # end
+    # @recipient.reply(msg)
+  end
+
+  def update_buildlog
+    new_buildlog = open("http://108.67.190.32/buildlog").read.strip
+    @buildlog = new_buildlog if new_buildlog #Don't update the buildlog if there is an error
+  end
+
+  # Returns true when buildlog was updated
+  def buildlog_updated?
+    old_buildlog = @buildlog
+    update_buildlog
+    buildlog && buildlog != old_buildlog
+  end
+
+  def buildlog
+    update_buildlog if @buildlog.nil?
+    @buildlog
   end
 
   def monitor_rss
@@ -114,6 +142,12 @@ class RssMonitor
           # @recipient.reply "Updating feed"
           puts "Updating feed"
           updated_feed = Feedzirra::Feed.update(@feed)
+          # puts "Updating Vampier buildlog"
+          # if buildlog_updated?
+          #   last_error = File.readlines(buildlog).first.split(':').last rescue nil
+          #   reply_msg("Vampier's build system detected an error while compiling: #{last_error}") if last_error
+          # end
+
           # @recipient.reply updated_feed
           puts updated_feed
           if updated_feed.kind_of?(Fixnum)
@@ -168,9 +202,14 @@ bot = Cinch::Bot.new do
     m.reply "Mac Debugger: " + Nokogiri::HTML(open('http://openmsx.fixato.net/builds/mac/debugger/')).css('tr td a')[3,2].map{|el|el['href']}.join(" - ")
     m.reply "Windows 32-bits: " + Nokogiri::HTML(open('http://openmsx.fixato.net/builds/windows/x86/')).css('tr td a')[3]['href']
     m.reply "Windows 64-bits: " + Nokogiri::HTML(open('http://openmsx.fixato.net/builds/windows/x64/')).css('tr td a')[3]['href']
+    m.reply "Dingux: " + Nokogiri::HTML(open('http://openmsx.fixato.net/builds/dingux/')).css('tr td a')[3]['href']
   end
   on :message, "!handlers" do |m|
     m.bot.handlers.each{|h| m.reply h.to_s}
+  end
+
+  on :message, "!help" do |m|
+    m.reply "Available commands: !svn, !latest, !daily, !last rss"
   end
 
   on :message, "!last rss" do |m|
@@ -181,27 +220,27 @@ bot = Cinch::Bot.new do
     end
   end
 
-  on :message, "!start silent rss monitoring" do |m|
-    $rss_monitor.recipient = m.dup
-    m.reply "Started"
-    # if $thread && $thread.alive?
-    #   m.reply "Hello, #{m.user.nick}. The RSS feed is already being monitored. Current thread status: #{$thread.status}"
-    # else
-    #   Thread.new{monitor_rss}
-    # end
-  end
+  # on :message, "!start silent rss monitoring" do |m|
+  #   $rss_monitor.recipient = m.dup
+  #   m.reply "Started"
+  #   # if $thread && $thread.alive?
+  #   #   m.reply "Hello, #{m.user.nick}. The RSS feed is already being monitored. Current thread status: #{$thread.status}"
+  #   # else
+  #   #   Thread.new{monitor_rss}
+  #   # end
+  # end
 
-  on :message, "!start rss monitoring" do |m|
-    $rss_monitor.recipient = m.dup
-    # if $thread && $thread.alive?
-      # m.reply "Hello, #{m.user.nick}. The RSS feed is already being monitored. Current thread status: #{$thread.status}"
-      if $rss_monitor.last_entry
-        m.reply $rss_monitor.report_last_entry
-      else
-        m.reply "No last rss feed entry found."
-      end
-    # end
-  end
+  # on :message, "!start rss monitoring" do |m|
+  #   $rss_monitor.recipient = m.dup
+  #   # if $thread && $thread.alive?
+  #     # m.reply "Hello, #{m.user.nick}. The RSS feed is already being monitored. Current thread status: #{$thread.status}"
+  #     if $rss_monitor.last_entry
+  #       m.reply $rss_monitor.report_last_entry
+  #     else
+  #       m.reply "No last rss feed entry found."
+  #     end
+  #   # end
+  # end
 end
 $rss_monitor.bot = bot
 bot.start
