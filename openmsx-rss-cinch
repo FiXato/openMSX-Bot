@@ -84,6 +84,16 @@ class RssMonitor
       committer = matchdata[1]
       forum_reply_title = matchdata[2]
       message = "[FORUM] #{committer_name(committer)} replied to the forum thread: #{forum_reply_title}."
+    elsif matchdata = entry.title.match(/(\S+) commented on the (.+) artifact/)
+      type = :new_tracker_reply
+      committer = matchdata[1]
+      tracker_reply_title = matchdata[2]
+      message = "[TRACKER] #{committer_name(committer)} replied to the tracker item: #{tracker_reply_title}."
+    elsif matchdata = entry.title.match(/(\S+) created the (.+) artifact/)
+      type = :new_tracker_item
+      committer = matchdata[1]
+      tracker_item_title = matchdata[2]
+      message = "[TRACKER] #{committer_name(committer)} created a tracker item: #{tracker_item_title}."
     else
       type = :unknown
       p entry
