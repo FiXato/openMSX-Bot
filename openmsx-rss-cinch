@@ -237,6 +237,14 @@ bot = Cinch::Bot.new do
     end
   end
 
+  on :message, "!docs" do |m|
+    m.reply "The openMSX documentation is located at http://openmsx.sourceforge.net/docs.php"
+  end
+
+  on :message, "!manual" do |m|
+    m.reply "The openMSX manuals are located at http://openmsx.sourceforge.net/manual/ and the user manual at http://openmsx.sourceforge.net/manual/user.html"
+  end
+
   on :message, "!compilation guide" do |m|
     m.reply "The compilation guide can be found at: http://openmsx.sourceforge.net/manual/compile.html"
   end
