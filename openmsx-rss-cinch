@@ -180,6 +180,11 @@ end
 
 $rss_monitor = RssMonitor.new
 $rss_monitor.monitor_rss
+
+def latest_build_for(url)
+  URI.join(url, URI.encode(Nokogiri::HTML(open(url)).css('tr td a')[3]['href'])).to_s
+end
+
 bot = Cinch::Bot.new do
   configure do |c|
     c.server = "irc.freenode.org"
@@ -198,11 +203,11 @@ bot = Cinch::Bot.new do
   end
   on :message, "!daily" do |m|
     m.reply "Latest Daily Builds:"
-    m.reply "Mac: " + Nokogiri::HTML(open('http://openmsx.fixato.net/builds/mac/universal/')).css('tr td a')[3]['href']
-    m.reply "Mac Debugger: " + Nokogiri::HTML(open('http://openmsx.fixato.net/builds/mac/debugger/')).css('tr td a')[3,2].map{|el|el['href']}.join(" - ")
-    m.reply "Windows 32-bits: " + Nokogiri::HTML(open('http://openmsx.fixato.net/builds/windows/x86/')).css('tr td a')[3]['href']
-    m.reply "Windows 64-bits: " + Nokogiri::HTML(open('http://openmsx.fixato.net/builds/windows/x64/')).css('tr td a')[3]['href']
-    m.reply "Dingux: " + Nokogiri::HTML(open('http://openmsx.fixato.net/builds/dingux/')).css('tr td a')[3]['href']
+    m.reply "Mac: " + latest_build_for('http://openmsx.fixato.net/builds/mac/universal/')
+    m.reply "Mac Debugger: " + Nokogiri::HTML(open(base_url = 'http://openmsx.fixato.net/builds/mac/debugger/')).css('tr td a')[3,2].map{|el|href = el['href']; URI.join(base_url, URI.encode(href)).to_s}.join(" - ")
+    m.reply "Windows 32-bits: " + latest_build_for('http://openmsx.fixato.net/builds/windows/x86/')
+    m.reply "Windows 64-bits: " + latest_build_for('http://openmsx.fixato.net/builds/windows/x64/')
+    m.reply "Dingux: " + latest_build_for('http://openmsx.fixato.net/builds/dingux/')
   end
   on :message, "!handlers" do |m|
     m.bot.handlers.each{|h| m.reply h.to_s}
