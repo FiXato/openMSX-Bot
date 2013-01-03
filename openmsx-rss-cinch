@@ -25,6 +25,8 @@ include CinchExt
 # <description><![CDATA[manuelbi created the openMSX 0.9.1 released news entry]]></description>
 # <content:encoded><![CDATA[<p>2012-09-30 14:33:54 - <strong>manuelbi created the openMSX 0.9.1 released news entry</strong></p>]]></content:encoded>
 # <pubDate>Sun, 30 Sep 2012 21:33:54 +0000</pubDate>
+
+# <description><![CDATA[bifimsx committed revision 13076 to the openMSX SVN repository, changing 1 files]]></description>
 class RssMonitor
   attr_accessor :recipient, :bot, :last_entry
   TIMEOUT = 60
@@ -42,14 +44,15 @@ class RssMonitor
   end
 
   def feed_entry_report(entry)
-    if matchdata = entry.title.match(/(\S+) committed revision (\d+) to the (.+) SVN repository(, changing (\d) files)?/)
+    if matchdata = entry.title.match(/(\S+) committed revision (\d+) to the (.+) SVN repository(, changing (\d+) files)?/)
       type = :commit
       committer = matchdata[1]
       revision = matchdata[2]
       repo = matchdata[3]
       number_of_files_changed = (matchdata[5]||0)
       svn_log = ''
-      svn_url = "https://openmsx.svn.sourceforge.net/svnroot/openmsx/#{repo.downcase}/trunk"
+      #svn_url = "https://openmsx.svn.sourceforge.net/svnroot/openmsx/#{repo.downcase}/trunk"
+      svn_url = "https://openmsx.svn.sourceforge.net/svnroot/openmsx/"
       cmd = "svn log -v --xml --with-all-revprops -r #{revision} #{svn_url}"
       Timeout::timeout(TIMEOUT) {
         svn_log = Nokogiri::XML(`#{cmd}`)
@@ -223,13 +226,14 @@ bot = Cinch::Bot.new do
     m.reply "Windows 32-bits: " + latest_build_for('http://openmsx.fixato.net/builds/windows/x86/')
     m.reply "Windows 64-bits: " + latest_build_for('http://openmsx.fixato.net/builds/windows/x64/')
     m.reply "Dingux: " + latest_build_for('http://openmsx.fixato.net/builds/dingux/')
+    m.reply "Android: " + latest_build_for('http://openmsx.fixato.net/builds/android/')
   end
   on :message, "!handlers" do |m|
     m.bot.handlers.each{|h| m.reply h.to_s}
   end
 
   on :message, "!help" do |m|
-    m.reply "Available commands: !svn, !latest, !daily, !last rss, !compilation guide, !faq, !commands, !setup guide, !roms, !diskmanipulator, !catapult, !keys, !renderers, !docs, !manual"
+    m.reply "Available commands: !svn, !latest, !daily, !last rss, !compilation guide, !faq, !forums, !commands, !setup guide, !roms, !diskmanipulator, !catapult, !keys, !renderers, !docs, !manual"
   end
 
   on :message, "!last rss" do |m|
@@ -254,6 +258,10 @@ bot = Cinch::Bot.new do
 
   on :message, "!faq" do |m|
     m.reply "The Frequently Asked Questions and their answers can be found at: http://openmsx.sourceforge.net/manual/faq.html"
+  end
+
+  on :message, "!forums" do |m|
+    m.reply "We have 2 forums. One over at SourceForge: http://sourceforge.net/projects/openmsx/forums and one at MRC: http://www.msx.org/forum/semi-msx-talk/openmsx"
   end
 
   on :message, "!commands" do |m|
