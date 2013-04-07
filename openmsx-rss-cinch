@@ -29,7 +29,7 @@ include CinchExt
 # <description><![CDATA[bifimsx committed revision 13076 to the openMSX SVN repository, changing 1 files]]></description>
 class RssMonitor
   attr_accessor :recipient, :bot, :last_entry
-  TIMEOUT = 60
+  TIMEOUT = 30
   COMMITTERS = {
     'bifimsx' => 'BiFi',
     'm9710797' => 'Wouter',
@@ -38,13 +38,18 @@ class RssMonitor
     'mthuurne' => 'mth',
     'fixato'   => 'Filip H.F. "FiXato" Slagter'
   }
+#  SVN_URL = "https://openmsx.svn.sourceforge.net/svnroot/openmsx/"
+  SVN_URL = "http://svn.code.sf.net/p/openmsx/code/openmsx/trunk"
+  FEED_URL = "http://sourceforge.net/export/rss2_keepsake.php?group_id=38274"
 
   def committer_name(committer)
     COMMITTERS[committer]||committer
   end
 
   def feed_entry_report(entry)
+    p entry
     if matchdata = entry.title.match(/(\S+) committed revision (\d+) to the (.+) SVN repository(, changing (\d+) files)?/)
+      puts "Commit type"
       type = :commit
       committer = matchdata[1]
       revision = matchdata[2]
@@ -52,11 +57,14 @@ class RssMonitor
       number_of_files_changed = (matchdata[5]||0)
       svn_log = ''
       #svn_url = "https://openmsx.svn.sourceforge.net/svnroot/openmsx/#{repo.downcase}/trunk"
-      svn_url = "https://openmsx.svn.sourceforge.net/svnroot/openmsx/"
+      svn_url = SVN_URL
+      puts "SVN: #{svn_url}"
       cmd = "svn log -v --xml --with-all-revprops -r #{revision} #{svn_url}"
+      puts cmd
       Timeout::timeout(TIMEOUT) {
         svn_log = Nokogiri::XML(`#{cmd}`)
       }
+      puts svn_log
       files_changed = svn_log.css('path').map{|el|"[#{el['action']}] '#{el.text}'"}
       commit_message = svn_log.css('logentry msg').text
       commit_message_lines = commit_message.split("\n").select{|l|!l.empty?}
@@ -145,7 +153,8 @@ class RssMonitor
   end
 
   def monitor_rss
-    @feed = Feedzirra::Feed.fetch_and_parse("https://sourceforge.net/export/rss2_keepsake.php?group_id=38274")
+    puts "Checking feed at #{FEED_URL}"
+    @feed = Feedzirra::Feed.fetch_and_parse(FEED_URL)
     if @feed.kind_of?(Fixnum)
       reply_msg "Error with feed: #{@feed}"
     else
@@ -206,15 +215,29 @@ end
 bot = Cinch::Bot.new do
   configure do |c|
     c.server = "irc.freenode.org"
+    c.port = 7000
+    c.ssl.use = true
     c.nick = "openMSX"
     c.channels = ["#openmsx", '#nomedia']
   end
 
+  on :message, /.?/ do |m|
+    unless $thread.alive?
+      $thread.kill
+      $thread.join
+      $rss_monitor.monitor_rss
+    end
+  end
+
   on :message, "!svn" do |m|
-    m.reply "openMSX: svn co https://openmsx.svn.sourceforge.net/svnroot/openmsx openmsx"
-    m.reply "openMSX Debugger: svn co https://openmsx.svn.sourceforge.net/svnroot/openmsx openmsx-debugger"
-    m.reply "openMSX Catapult: svn co https://openmsx.svn.sourceforge.net/svnroot/openmsx catapult"
-    m.reply "openMSX WxCatapult: svn co https://openmsx.svn.sourceforge.net/svnroot/openmsx wxcatapult"
+    m.reply "openMSX: svn co #{RssMonitor::SVN_URL} openmsx"
+    m.reply "openMSX Debugger: svn co #{RssMonitor::SVN_URL} openmsx-debugger"
+    m.reply "openMSX Catapult: svn co #{RssMonitor::SVN_URL} catapult"
+    m.reply "openMSX WxCatapult: svn co #{RssMonitor::SVN_URL} wxcatapult"
+  end
+
+  on :message, "!git" do |m|
+    m.reply "You can also use git-svn to clone the repo: git svn clone #{RssMonitor::SVN_URL}"
   end
   on :message, "!latest" do |m|
     m.reply "Latest files available from: http://sourceforge.net/projects/openmsx/files/latest/download?source=files"
@@ -233,7 +256,11 @@ bot = Cinch::Bot.new do
   end
 
   on :message, "!help" do |m|
-    m.reply "Available commands: !svn, !latest, !daily, !last rss, !compilation guide, !faq, !forums, !commands, !setup guide, !roms, !diskmanipulator, !catapult, !keys, !renderers, !docs, !manual"
+    m.reply "Available commands: !svn, !latest, !daily, !last rss, !compilation guide, !faq, !forums, !commands, !setup guide, !roms, !diskmanipulator, !catapult, !keys, !renderers, !docs, !manual, !git"
+  end
+
+  on :message, "!github" do |m|
+    m.reply "This bot's source can be downloaded from https://github.com/FiXato/openMSX-Bot and you are free to fork it and send in features via pull-requests." 
   end
 
   on :message, "!last rss" do |m|
