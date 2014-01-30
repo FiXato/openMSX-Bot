@@ -27,8 +27,9 @@ include CinchExt
 # <pubDate>Sun, 30 Sep 2012 21:33:54 +0000</pubDate>
 
 # <description><![CDATA[bifimsx committed revision 13076 to the openMSX SVN repository, changing 1 files]]></description>
+$BOT_MANAGERS = %w[bifi quibus vampier hap mth wouter_ wouterv fixato fix]
 class RssMonitor
-  attr_accessor :recipient, :bot, :last_entry
+  attr_accessor :recipient, :bot, :last_entry, :silent
   TIMEOUT = 30
   COMMITTERS = {
     'bifimsx' => 'BiFi',
@@ -39,52 +40,94 @@ class RssMonitor
     'fixato'   => 'Filip H.F. "FiXato" Slagter'
   }
 #  SVN_URL = "https://openmsx.svn.sourceforge.net/svnroot/openmsx/"
-  SVN_URL = "http://svn.code.sf.net/p/openmsx/code/openmsx/trunk"
+  # SVN_URL = "http://svn.code.sf.net/p/openmsx/code/openmsx/trunk"
   FEED_URL = "http://sourceforge.net/export/rss2_keepsake.php?group_id=38274"
+  # FEED_URL = "https://sourceforge.net/p/openmsx/openmsx/feed"
+  GIT_FEED_URL = "https://sourceforge.net/p/openmsx/feed"
+
+  def initialize()
+    @last_entry = {}
+    @silent = false
+  end
 
   def committer_name(committer)
     COMMITTERS[committer]||committer
   end
 
-  def feed_entry_report(entry)
+  def feed_entry_report(entry,feed_type=nil)
     p entry
-    if matchdata = entry.title.match(/(\S+) committed revision (\d+) to the (.+) SVN repository(, changing (\d+) files)?/)
+    p feed_type
+    if feed_type == 'new'
+      if entry.url.include?('/ci/')
+        type = :commit
+        repo = entry.url.split('/')[5]
+        repos = {
+          'wxcatapult' => 'wxCatapult',
+          'openmsx' => 'openMSX',
+          'catapult' => 'Catapult',
+          'package-windows' => 'openMSX Win 32 Packaging Project',
+          'debugger' => 'openMSX Debugger',
+          'website' => 'openMSX.SF.net',
+        }
+        repo = repos[repo] rescue repo
+        message = '[%s] %s' % [repo, entry.title]
+      elsif entry.url.include?('/bugs/')
+        type = :bug_report
+        message = '[BUG] %s' % [repo, entry.title]
+      elsif entry.url.include?('/feature-requests/')
+        type = :feature_request
+        message = '[FEATURE] %s' % [repo, entry.title]
+      elsif entry.url.include?('/support-requests/')
+        type = :support_request
+        message = '[SUPPORT] %s' % [repo, entry.title]
+      elsif entry.url.include?('/patches/')
+        type = :patches
+        message = '[PATCH] %s' % [repo, entry.title]
+      end
+      p message
+    elsif matchdata = entry.title.match(/(\S+) committed revision (\d+) to the (.+) SVN repository(, changing (\d+) files)?/)
       puts "Commit type"
-      type = :commit
-      committer = matchdata[1]
-      revision = matchdata[2]
-      repo = matchdata[3]
-      number_of_files_changed = (matchdata[5]||0)
-      svn_log = ''
-      #svn_url = "https://openmsx.svn.sourceforge.net/svnroot/openmsx/#{repo.downcase}/trunk"
-      svn_url = SVN_URL
-      puts "SVN: #{svn_url}"
-      cmd = "svn log -v --xml --with-all-revprops -r #{revision} #{svn_url}"
-      puts cmd
-      Timeout::timeout(TIMEOUT) {
-        svn_log = Nokogiri::XML(`#{cmd}`)
-      }
-      puts svn_log
-      files_changed = svn_log.css('path').map{|el|"[#{el['action']}] '#{el.text}'"}
-      commit_message = svn_log.css('logentry msg').text
-      commit_message_lines = commit_message.split("\n").select{|l|!l.empty?}
-      # shortened = commit_message_lines.size > 3 ? true : false
-      # sanitised_commit_message_lines = commit_message_lines[0,3].map{|line|line.split(/.{200}/).join("\n")}.join("\n").split("\n")
-      # shortened ||= sanitised_commit_message_lines.size > 3 ? true : false
-      # commit_message_sanitised = sanitised_commit_message_lines[0,3].join("\n")
-      shortened = commit_message_lines.size > 1 ? true : false
-      commit_message_sanitised = commit_message_lines.first
-      commit_message_sanitised += '[...]' if shortened
-      message = <<-COMMIT_EOS
-  [SVN][#{CONTROL_CODES[:bold]}#{repo}#{CONTROL_CODES[:normal]}] #{CONTROL_CODES[:colour]}3#{committer_name(committer)}#{CONTROL_CODES[:normal]} committed revision#{CONTROL_CODES[:colour]}3 #{revision}#{CONTROL_CODES[:normal]}.
-  #{CONTROL_CODES[:bold]}#{commit_message_sanitised}#{CONTROL_CODES[:normal]}
-  #{files_changed.size} file#{'s' if files_changed.size != 1} changed: #{files_changed[0,5].join(', ')}#{" and #{files_changed.size - 5} others" if files_changed.size > 5}.
-      COMMIT_EOS
+      return nil
+      # type = :commit
+  #     committer = matchdata[1]
+  #     revision = matchdata[2]
+  #     repo = matchdata[3]
+  #     number_of_files_changed = (matchdata[5]||0)
+  #     svn_log = ''
+  #     #svn_url = "https://openmsx.svn.sourceforge.net/svnroot/openmsx/#{repo.downcase}/trunk"
+  #     svn_url = SVN_URL
+  #     puts "SVN: #{svn_url}"
+  #     cmd = "svn log -v --xml --with-all-revprops -r #{revision} #{svn_url}"
+  #     puts cmd
+  #     Timeout::timeout(TIMEOUT) {
+  #       svn_log = Nokogiri::XML(`#{cmd}`)
+  #     }
+  #     puts svn_log
+  #     files_changed = svn_log.css('path').map{|el|"[#{el['action']}] '#{el.text}'"}
+  #     commit_message = svn_log.css('logentry msg').text
+  #     commit_message_lines = commit_message.split("\n").select{|l|!l.empty?}
+  #     # shortened = commit_message_lines.size > 3 ? true : false
+  #     # sanitised_commit_message_lines = commit_message_lines[0,3].map{|line|line.split(/.{200}/).join("\n")}.join("\n").split("\n")
+  #     # shortened ||= sanitised_commit_message_lines.size > 3 ? true : false
+  #     # commit_message_sanitised = sanitised_commit_message_lines[0,3].join("\n")
+  #     shortened = commit_message_lines.size > 1 ? true : false
+  #     commit_message_sanitised = commit_message_lines.first
+  #     commit_message_sanitised += '[...]' if shortened
+  #     message = <<-COMMIT_EOS
+  # [SVN][#{CONTROL_CODES[:bold]}#{repo}#{CONTROL_CODES[:normal]}] #{CONTROL_CODES[:colour]}3#{committer_name(committer)}#{CONTROL_CODES[:normal]} committed revision#{CONTROL_CODES[:colour]}3 #{revision}#{CONTROL_CODES[:normal]}.
+  # #{CONTROL_CODES[:bold]}#{commit_message_sanitised}#{CONTROL_CODES[:normal]}
+  # #{files_changed.size} file#{'s' if files_changed.size != 1} changed: #{files_changed[0,5].join(', ')}#{" and #{files_changed.size - 5} others" if files_changed.size > 5}.
+  #     COMMIT_EOS
     elsif matchdata = entry.title.match(/(\S+) made (\d+) file-release changes/)
       type = :file_release_change
       committer = matchdata[1]
       number_of_changes = matchdata[2]
       message = "[PROJECT] #{committer_name(committer)} made #{number_of_changes} file-release changes."
+    elsif matchdata = entry.title.match(/(\S+) changed the public information on the (.+) project/)
+      type = :project_public_info_change
+      committer = matchdata[1]
+      project = matchdata[2]
+      message = "[PROJECT] #{committer_name(committer)} made changes to the public information of the #{project} project page."
     elsif matchdata = entry.title.match(/(\S+) created the (.+) news entry/)
       type = :new_news_entry
       committer = matchdata[1]
@@ -115,28 +158,19 @@ class RssMonitor
     response
   end
 
-  def report_last_entry
-    feed_entry_report(@last_entry).strip
-  end
-
   def reply_msg(msg)
     puts msg
+    return if @silent
     if bot
       bot.channels.uniq.each do |channel|
         puts channel.to_s.downcase
         channel.msg msg if %w[#openmsx #nomedia].include?(channel.to_s.downcase)
       end
     end
-    # unless @recipient
-    #   puts "'#{@recipient}' recipient no longer available"
-    #   return
-    # end
-    # @recipient.reply(msg)
   end
 
   def update_buildlog
     new_buildlog = open("http://vampier.fixato.org/buildlog/error.txt").read.strip
-    # new_buildlog = open("http://fixato.org/test.txt").read.strip
     @buildlog = new_buildlog if new_buildlog #Don't update the buildlog if there is an error
   end
 
@@ -153,47 +187,56 @@ class RssMonitor
   end
 
   def monitor_rss
-    puts "Checking feed at #{FEED_URL}"
+    puts "Fetching feed at #{FEED_URL}"
     @feed = Feedzirra::Feed.fetch_and_parse(FEED_URL)
-    if @feed.kind_of?(Fixnum)
-      reply_msg "Error with feed: #{@feed}"
-    else
-      @last_entry = @feed.entries.first
-      reply_msg "Last entry was: "
-      reply_msg feed_entry_report(@last_entry).strip
+    puts "Fetching feed at #{GIT_FEED_URL}"
+    @new_feed = Feedzirra::Feed.fetch_and_parse(GIT_FEED_URL)
+    @feeds = {'new' => @new_feed, 'old' => @feed}
+    @feeds.each do |curr_feed_type, curr_feed|
+      puts "Checking #{curr_feed_type} feed"
+      if curr_feed.kind_of?(Fixnum)
+        reply_msg "Error with #{curr_feed_type} feed: #{curr_feed}"
+      else
+        @last_entry[curr_feed_type] = curr_feed.entries.first
+        reply_msg "Last entry was: "
+        reply_msg feed_entry_report(@last_entry[curr_feed_type],curr_feed_type).strip
+      end
     end
     $thread = Thread.new do
       loop do 
         begin
-          # @recipient.reply "Updating feed"
-          puts "Updating feed"
-          updated_feed = Feedzirra::Feed.update(@feed)
+          @feeds.each do |curr_feed_type, curr_feed|
+            # @recipient.reply "Updating feed"
+            puts "Updating #{curr_feed_type} feed"
+            updated_feed = Feedzirra::Feed.update(curr_feed)
+
+            # @recipient.reply updated_feed
+            puts updated_feed
+            if updated_feed.kind_of?(Fixnum)
+              puts "Error with #{curr_feed_type} feed: #{updated_feed}"
+            elsif updated_feed.new_entries.size > 0
+              # @recipient.reply "#{updated_feed.new_entries.size} new entries found!"
+              puts "#{updated_feed.new_entries.size} new entries found!"
+              @last_entry[curr_feed_type] = updated_feed.entries.first
+              updated_feed.new_entries.reverse.each do |entry|
+                message = feed_entry_report(entry,curr_feed_type).to_s.strip
+                reply_msg message unless message.to_s.empty?
+              end
+              @feeds[curr_feed_type] = updated_feed
+              @feeds[curr_feed_type].new_entries = []
+            else
+              puts "#{updated_feed.new_entries.size} no new entries found :("
+              # @recipient.reply "#{updated_feed.new_entries.size} no new entries found :("
+            end
+            puts "Slept for #{sleep (3 * 60)}"
+          end
+
           puts "Updating Vampier buildlog"
           if buildlog_updated?
             last_error = buildlog.split("\n").first.to_i rescue nil
             puts "buildlog: #{buildlog} -- rev: #{last_error}"
             reply_msg("Windows Build System detected an error while compiling revision #{last_error}: http://vampier.fixato.org/buildlog/logs/openMSXCompileRevision-#{last_error}.log") if last_error > 0
           end
-
-          # @recipient.reply updated_feed
-          puts updated_feed
-          if updated_feed.kind_of?(Fixnum)
-            puts "Error with feed: #{updated_feed}"
-          elsif updated_feed.new_entries.size > 0
-            # @recipient.reply "#{updated_feed.new_entries.size} new entries found!"
-            puts "#{updated_feed.new_entries.size} new entries found!"
-            @last_entry = updated_feed.entries.first
-            updated_feed.new_entries.reverse.each do |entry|
-              message = feed_entry_report(entry).to_s.strip
-              reply_msg message unless message.to_s.empty?
-            end
-            @feed = updated_feed
-            @feed.new_entries = []
-          else
-            puts "#{updated_feed.new_entries.size} no new entries found :("
-            # @recipient.reply "#{updated_feed.new_entries.size} no new entries found :("
-          end
-          puts "Slept for #{sleep (3 * 60)}"
         rescue Exception => e
           puts e.class.name
           puts e.message
@@ -229,16 +272,16 @@ bot = Cinch::Bot.new do
     end
   end
 
-  on :message, "!svn" do |m|
-    m.reply "openMSX: svn co #{RssMonitor::SVN_URL} openmsx"
-    m.reply "openMSX Debugger: svn co #{RssMonitor::SVN_URL} openmsx-debugger"
-    m.reply "openMSX Catapult: svn co #{RssMonitor::SVN_URL} catapult"
-    m.reply "openMSX WxCatapult: svn co #{RssMonitor::SVN_URL} wxcatapult"
-  end
+  # on :message, "!svn" do |m|
+  #   m.reply "openMSX: svn co #{RssMonitor::SVN_URL} openmsx"
+  #   m.reply "openMSX Debugger: svn co #{RssMonitor::SVN_URL} openmsx-debugger"
+  #   m.reply "openMSX Catapult: svn co #{RssMonitor::SVN_URL} catapult"
+  #   m.reply "openMSX WxCatapult: svn co #{RssMonitor::SVN_URL} wxcatapult"
+  # end
 
-  on :message, "!git" do |m|
-    m.reply "You can also use git-svn to clone the repo: git svn clone #{RssMonitor::SVN_URL}"
-  end
+  # on :message, "!git" do |m|
+  #   m.reply "You can also use git-svn to clone the repo (though be prepared to wait for a long time for it to finish the initial checkout): git svn clone #{RssMonitor::SVN_URL}"
+  # end
   on :message, "!latest" do |m|
     m.reply "Latest files available from: http://sourceforge.net/projects/openmsx/files/latest/download?source=files"
   end
@@ -256,7 +299,7 @@ bot = Cinch::Bot.new do
   end
 
   on :message, "!help" do |m|
-    m.reply "Available commands: !svn, !latest, !daily, !last rss, !compilation guide, !faq, !forums, !commands, !setup guide, !roms, !diskmanipulator, !catapult, !keys, !renderers, !docs, !manual, !git"
+    m.reply "Available commands: !latest, !daily, !last rss, !compilation guide, !faq, !forums, !commands, !setup guide, !roms, !diskmanipulator, !catapult, !keys, !renderers, !docs, !manual"
   end
 
   on :message, "!github" do |m|
@@ -264,10 +307,13 @@ bot = Cinch::Bot.new do
   end
 
   on :message, "!last rss" do |m|
-    if $rss_monitor.last_entry
-      m.reply $rss_monitor.report_last_entry
+    if $rss_monitor.last_entry.size > 0
+      # @.map{|feed_type, feed_entry| feed_entry_report(feed).strip}
+      $rss_monitor.last_entry.each do |feed_type, last_entry|
+        m.reply '[%s] %s' % [feed_type, $rss_monitor.feed_entry_report(last_entry,feed_type)]
+      end
     else
-      m.reply "No last rss feed entry found. Maybe start RSS monitoring first."
+      m.reply "No last rss feed entries found. Maybe start RSS monitoring first."
     end
   end
 
@@ -319,6 +365,19 @@ bot = Cinch::Bot.new do
   on :message, "!renderers" do |m|
     m.reply "Information about the renderers is available at http://openmsx.sourceforge.net/manual/user.html#renderers"
   end
+
+  on :message, "!silence" do |m|
+    return unless $BOT_MANAGERS.include?(m.user.nick.downcase)
+    m.reply "My RSS monitor will go silent now."
+    $rss_monitor.silent = true
+  end
+
+  on :message, "!wake up" do |m|
+    return unless $BOT_MANAGERS.include?(m.user.nick.downcase)
+    $rss_monitor.silent = false
+    m.reply "My RSS monitor is woken up again."
+  end
+
   # on :message, "!start silent rss monitoring" do |m|
   #   $rss_monitor.recipient = m.dup
   #   m.reply "Started"
