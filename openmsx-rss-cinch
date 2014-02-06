@@ -57,7 +57,7 @@ class RssMonitor
   def feed_entry_report(entry,feed_type=nil)
     p entry
     p feed_type
-    if feed_type == 'new'
+    if feed_type == 'RSS'
       if entry.url.include?('/ci/')
         type = :commit
         repo = entry.url.split('/')[5]
@@ -70,19 +70,19 @@ class RssMonitor
           'website' => 'openMSX.SF.net',
         }
         repo = repos[repo] rescue repo
-        message = '[%s] %s' % [repo, entry.title]
+        message = '[GIT/%s] %s' % [repo, entry.title]
       elsif entry.url.include?('/bugs/')
         type = :bug_report
-        message = '[BUG] %s' % [repo, entry.title]
+        message = '[TRACKER/BUG] %s' % entry.title
       elsif entry.url.include?('/feature-requests/')
         type = :feature_request
-        message = '[FEATURE] %s' % [repo, entry.title]
+        message = '[TRACKER/FEATURE] %s' % entry.title
       elsif entry.url.include?('/support-requests/')
         type = :support_request
-        message = '[SUPPORT] %s' % [repo, entry.title]
+        message = '[TRACKER/SUPPORT] %s' % entry.title
       elsif entry.url.include?('/patches/')
         type = :patches
-        message = '[PATCH] %s' % [repo, entry.title]
+        message = '[TRACKER/PATCH] %s' % entry.title
       end
       p message
     elsif matchdata = entry.title.match(/(\S+) committed revision (\d+) to the (.+) SVN repository(, changing (\d+) files)?/)
@@ -191,7 +191,7 @@ class RssMonitor
     @feed = Feedzirra::Feed.fetch_and_parse(FEED_URL)
     puts "Fetching feed at #{GIT_FEED_URL}"
     @new_feed = Feedzirra::Feed.fetch_and_parse(GIT_FEED_URL)
-    @feeds = {'new' => @new_feed, 'old' => @feed}
+    @feeds = {'RSS' => @new_feed, 'old' => @feed}
     @feeds.each do |curr_feed_type, curr_feed|
       puts "Checking #{curr_feed_type} feed"
       if curr_feed.kind_of?(Fixnum)
