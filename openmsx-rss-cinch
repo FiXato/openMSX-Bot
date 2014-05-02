@@ -57,7 +57,7 @@ class RssMonitor
   def feed_entry_report(entry,feed_type=nil)
     p entry
     p feed_type
-    if feed_type == 'RSS'
+    if feed_type == 'Current'
       if entry.url.include?('/ci/')
         type = :commit
         repo = entry.url.split('/')[5]
@@ -239,7 +239,7 @@ class RssMonitor
     @feed = Feedzirra::Feed.fetch_and_parse(FEED_URL)
     puts "Fetching feed at #{GIT_FEED_URL}"
     @new_feed = Feedzirra::Feed.fetch_and_parse(GIT_FEED_URL)
-    @feeds = {'RSS' => @new_feed, 'old' => @feed}
+    @feeds = {'Current' => @new_feed, 'Old' => @feed}
     @feeds.each do |curr_feed_type, curr_feed|
       puts "Checking #{curr_feed_type} feed"
       if curr_feed.kind_of?(Fixnum)
@@ -348,12 +348,13 @@ bot = Cinch::Bot.new do
     end
   end
 
-  on :message, "!current rss entries" do |m|
+  on :message, /!recent (\S*) ?rss entries/ do |m,feed_type|
     puts "Fetching feed at #{RssMonitor::FEED_URL}"
     @feed = Feedzirra::Feed.fetch_and_parse(RssMonitor::FEED_URL)
     puts "Fetching feed at #{RssMonitor::GIT_FEED_URL}"
     @new_feed = Feedzirra::Feed.fetch_and_parse(RssMonitor::GIT_FEED_URL)
-    @feeds = {'RSS' => @new_feed, 'old' => @feed}
+    @feeds = {'Current' => @new_feed, 'Old' => @feed}
+    @feeds.select!{|k,v|k.downcase == feed_type.to_s.downcase.strip} if feed_type.to_s != ''
     @feeds.each do |curr_feed_type, curr_feed|
       puts "Checking #{curr_feed_type} feed"
       if curr_feed.kind_of?(Fixnum)
