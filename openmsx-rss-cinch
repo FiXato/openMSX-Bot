@@ -83,6 +83,9 @@ class RssMonitor
       elsif entry.url.include?('/patches/')
         type = :patches
         message = '[TRACKER/PATCH] %s' % entry.title
+      else
+        type = :unknown
+        message = '[UNKNOWN] %s' % entry.title
       end
       p message
     elsif matchdata = entry.title.match(/(\S+) committed revision (\d+) to the (.+) SVN repository(, changing (\d+) files)?/)
