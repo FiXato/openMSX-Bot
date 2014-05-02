@@ -68,6 +68,7 @@ class RssMonitor
           'package-windows' => 'openMSX Win 32 Packaging Project',
           'debugger' => 'openMSX Debugger',
           'website' => 'openMSX.SF.net',
+          'htdocs' => 'Website',
         }
         repo = repos[repo] rescue repo
         message = '[GIT/%s] %s' % [repo, entry.title]
