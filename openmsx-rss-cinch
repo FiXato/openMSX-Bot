@@ -153,7 +153,12 @@ class RssMonitor
       p entry
       message = "[UNKNOWN] #{entry.title}"
     end
-    response = "[#{entry.published.to_s.strip}] #{message.strip}\n"
+    puts "Entry url: #{entry.url.inspect rescue 'error'}"
+    puts "Feed type: #{feed_type.inspect rescue 'error'}"
+    puts "Entry type: #{type.inspect rescue 'error'}"
+    puts "Published: #{entry.published.inspect rescue 'error'}"
+    puts "Message: #{message.inspect rescue 'error'}"
+    response = "[#{entry.published.to_s.strip}] #{message.to_s.strip}\n"
     response += entry.url
     response
   end
@@ -186,6 +191,46 @@ class RssMonitor
     @buildlog
   end
 
+  def update_and_report_feed(curr_feed_type, curr_feed)
+    # @recipient.reply "Updating feed"
+    puts "Updating #{curr_feed_type} feed"
+    updated_feed = Feedzirra::Feed.update(curr_feed)
+
+    # @recipient.reply updated_feed
+    puts updated_feed
+    if updated_feed.kind_of?(Fixnum)
+      puts "Error with #{curr_feed_type} feed: #{updated_feed}"
+    elsif updated_feed.new_entries.size > 0
+      begin
+        # @recipient.reply "#{updated_feed.new_entries.size} new entries found!"
+        puts "#{updated_feed.new_entries.size} new entries found!"
+        @last_entry[curr_feed_type] = updated_feed.entries.first
+        updated_feed.new_entries.reverse.each do |entry|
+          message = feed_entry_report(entry,curr_feed_type).to_s.strip
+          reply_msg message unless message.to_s.empty?
+        end
+      rescue => e
+        reply_msg "Error while updating feed: #{e.message}"
+        reply_msg e.backtrace[0..2].inspect
+      ensure
+        @feeds[curr_feed_type] = updated_feed
+        @feeds[curr_feed_type].new_entries = []
+      end
+    else
+      puts "#{updated_feed.new_entries.size} no new entries found :("
+      # @recipient.reply "#{updated_feed.new_entries.size} no new entries found :("
+    end
+  end
+
+  def update_vampier_buildlog
+    puts "Updating Vampier buildlog"
+    if buildlog_updated?
+      last_error = buildlog.split("\n").first.to_i rescue nil
+      puts "buildlog: #{buildlog} -- rev: #{last_error}"
+      reply_msg("Windows Build System detected an error while compiling revision #{last_error}: http://vampier.fixato.org/buildlog/logs/openMSXCompileRevision-#{last_error}.log") if last_error > 0
+    end
+  end
+
   def monitor_rss
     puts "Fetching feed at #{FEED_URL}"
     @feed = Feedzirra::Feed.fetch_and_parse(FEED_URL)
@@ -206,37 +251,19 @@ class RssMonitor
       loop do 
         begin
           @feeds.each do |curr_feed_type, curr_feed|
-            # @recipient.reply "Updating feed"
-            puts "Updating #{curr_feed_type} feed"
-            updated_feed = Feedzirra::Feed.update(curr_feed)
-
-            # @recipient.reply updated_feed
-            puts updated_feed
-            if updated_feed.kind_of?(Fixnum)
-              puts "Error with #{curr_feed_type} feed: #{updated_feed}"
-            elsif updated_feed.new_entries.size > 0
-              # @recipient.reply "#{updated_feed.new_entries.size} new entries found!"
-              puts "#{updated_feed.new_entries.size} new entries found!"
-              @last_entry[curr_feed_type] = updated_feed.entries.first
-              updated_feed.new_entries.reverse.each do |entry|
-                message = feed_entry_report(entry,curr_feed_type).to_s.strip
-                reply_msg message unless message.to_s.empty?
-              end
-              @feeds[curr_feed_type] = updated_feed
-              @feeds[curr_feed_type].new_entries = []
-            else
-              puts "#{updated_feed.new_entries.size} no new entries found :("
-              # @recipient.reply "#{updated_feed.new_entries.size} no new entries found :("
+            begin
+              status = Timeout::timeout(3 * 60) {update_and_report_feed(curr_feed_type, curr_feed)}
+            rescue Timeout::Error
+              puts "#update_and_report_feed(#{curr_feed_type}, #{curr_feed}) timed out. It ran longer than #{3 * 60} seconds. Skipping to next feed"
+              next
             end
-            puts "Slept for #{sleep (3 * 60)}"
           end
-
-          puts "Updating Vampier buildlog"
-          if buildlog_updated?
-            last_error = buildlog.split("\n").first.to_i rescue nil
-            puts "buildlog: #{buildlog} -- rev: #{last_error}"
-            reply_msg("Windows Build System detected an error while compiling revision #{last_error}: http://vampier.fixato.org/buildlog/logs/openMSXCompileRevision-#{last_error}.log") if last_error > 0
+          begin
+            status = Timeout::timeout(3 * 60){update_vampier_buildlog}
+          rescue Timeout::Error
+            puts "#update_vampier_buildlog timed out. It ran longer than #{3 * 60} seconds. Skipping to sleep cycle now."
           end
+          puts "Slept for #{sleep (3 * 60)}"
         rescue Exception => e
           puts e.class.name
           puts e.message
@@ -261,6 +288,7 @@ bot = Cinch::Bot.new do
     c.port = 7000
     c.ssl.use = true
     c.nick = "openMSX"
+    c.user = "openMSX"
     c.channels = ["#openmsx", '#nomedia']
   end
 
@@ -317,6 +345,25 @@ bot = Cinch::Bot.new do
     end
   end
 
+  on :message, "!current rss entries" do |m|
+    puts "Fetching feed at #{RssMonitor::FEED_URL}"
+    @feed = Feedzirra::Feed.fetch_and_parse(RssMonitor::FEED_URL)
+    puts "Fetching feed at #{RssMonitor::GIT_FEED_URL}"
+    @new_feed = Feedzirra::Feed.fetch_and_parse(RssMonitor::GIT_FEED_URL)
+    @feeds = {'RSS' => @new_feed, 'old' => @feed}
+    @feeds.each do |curr_feed_type, curr_feed|
+      puts "Checking #{curr_feed_type} feed"
+      if curr_feed.kind_of?(Fixnum)
+        reply_msg "Error with #{curr_feed_type} feed: #{curr_feed}"
+      else
+        m.reply "Current #{curr_feed.entries.size} #{curr_feed_type} RSS entries are:"
+        curr_feed.entries.each do |entry|
+          m.reply RssMonitor.new.feed_entry_report(entry,curr_feed_type).to_s.strip
+        end
+      end
+    end
+  end
+
   on :message, "!docs" do |m|
     m.reply "The openMSX documentation is located at http://openmsx.sourceforge.net/docs.php"
   end
@@ -364,6 +411,10 @@ bot = Cinch::Bot.new do
 
   on :message, "!renderers" do |m|
     m.reply "Information about the renderers is available at http://openmsx.sourceforge.net/manual/user.html#renderers"
+  end
+
+  on :message, "!todo" do |m|
+    m.reply "The openMSX 'TODO Before Release' list is available at https://sourceforge.net/apps/mediawiki/openmsx/index.php?title=TODO_before_next_release"
   end
 
   on :message, "!silence" do |m|
