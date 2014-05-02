@@ -83,6 +83,9 @@ class RssMonitor
       elsif entry.url.include?('/patches/')
         type = :patches
         message = '[TRACKER/PATCH] %s' % entry.title
+      elsif entry.url.include?('/news/')
+        type = :patches
+        message = '[PROJECT/NEWS] %s' % entry.title
       else
         type = :unknown
         message = '[UNKNOWN] %s' % entry.title
