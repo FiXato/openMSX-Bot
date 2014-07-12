@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 # encoding: utf-8
 require 'cinch'
-require 'feedzirra'
+require 'feedjira'
 require 'yaml'
 require 'nokogiri'
 require 'timeout'
@@ -28,8 +28,31 @@ include CinchExt
 
 # <description><![CDATA[bifimsx committed revision 13076 to the openMSX SVN repository, changing 1 files]]></description>
 $BOT_MANAGERS = %w[bifi quibus vampier hap mth wouter_ wouterv fixato fix]
+
+def pagetitle(url)
+  url = url.to_s.strip
+  return 'Invalid url' if url == ''
+  
+  begin
+    doc = nil
+    Timeout.timeout(15) { doc = open(url, "User-Agent" => "PageTitle Retriever - Ruby/#{RUBY_VERSION}") }
+    title = Nokogiri::HTML(doc).title
+    if title.nil?
+      return [doc.base_uri,doc.content_type].join(' ')
+    end
+    title.gsub!(/[\s\r\n\t]+/,' ') rescue title
+    return title
+  rescue Errno::ENOENT
+    'PageTitleError: ENOENT'
+  rescue OpenURI::HTTPError, RuntimeError => e
+    return ['PageTitleError:', (doc.base_uri rescue url), (doc.content_type rescue ''), e.class.name].join(' ')
+  rescue Timeout::Error
+    return 'Page Title Retrieval Timed Out'
+  end
+end
+
 class RssMonitor
-  attr_accessor :recipient, :bot, :last_entry, :silent
+  attr_accessor :recipient, :bot, :last_entry, :latest_entries, :silent
   TIMEOUT = 30
   COMMITTERS = {
     'bifimsx' => 'BiFi',
@@ -41,12 +64,18 @@ class RssMonitor
   }
 #  SVN_URL = "https://openmsx.svn.sourceforge.net/svnroot/openmsx/"
   # SVN_URL = "http://svn.code.sf.net/p/openmsx/code/openmsx/trunk"
-  FEED_URL = "http://sourceforge.net/export/rss2_keepsake.php?group_id=38274"
+#  FEED_URL = "http://sourceforge.net/export/rss2_keepsake.php?group_id=38274"
+  ACTIVITY_FEED_URL = "http://sourceforge.net/p/openmsx/activity/feed"
   # FEED_URL = "https://sourceforge.net/p/openmsx/openmsx/feed"
   GIT_FEED_URL = "https://sourceforge.net/p/openmsx/feed"
 
+  def feed_urls
+    {'Git' => GIT_FEED_URL, 'Activity' => ACTIVITY_FEED_URL}
+  end
+
   def initialize()
     @last_entry = {}
+    @latest_entries = {}
     @silent = false
   end
 
@@ -57,7 +86,7 @@ class RssMonitor
   def feed_entry_report(entry,feed_type=nil)
     p entry
     p feed_type
-    if feed_type == 'Current'
+    if feed_type == 'Git'
       if entry.url.include?('/ci/')
         type = :commit
         repo = entry.url.split('/')[5]
@@ -78,6 +107,8 @@ class RssMonitor
       elsif entry.url.include?('/feature-requests/')
         type = :feature_request
         message = '[TRACKER/FEATURE] %s' % entry.title
+        puts "#{type}: #{message}"
+        return nil
       elsif entry.url.include?('/support-requests/')
         type = :support_request
         message = '[TRACKER/SUPPORT] %s' % entry.title
@@ -155,6 +186,15 @@ class RssMonitor
       committer = matchdata[1]
       tracker_item_title = matchdata[2]
       message = "[TRACKER] #{committer_name(committer)} created a tracker item: #{tracker_item_title}."
+    elsif matchdata = entry.title.match(/(\S+) committed \[(\S+)\]/)
+      type = :new_commit
+      committer = matchdata[1]
+      tracker_item_title = matchdata[2]
+      message = "" #[TRACKER] #{committer_name(committer)} created a tracker item: #{tracker_item_title}."
+      return ""
+    elsif entry.url.include?('http://sourceforge.net/p/openmsx/feature-requests/')
+      type = :new_tracker_ticket_comment
+      message = "[TRACKER/FEATURE] #{entry.title} (#{pagetitle(entry.url)}): #{entry.summary}"
     else
       type = :unknown
       p entry
@@ -201,7 +241,7 @@ class RssMonitor
   def update_and_report_feed(curr_feed_type, curr_feed)
     # @recipient.reply "Updating feed"
     puts "Updating #{curr_feed_type} feed"
-    updated_feed = Feedzirra::Feed.update(curr_feed)
+    updated_feed = Feedjira::Feed.update(curr_feed)
 
     # @recipient.reply updated_feed
     puts updated_feed
@@ -212,9 +252,12 @@ class RssMonitor
         # @recipient.reply "#{updated_feed.new_entries.size} new entries found!"
         puts "#{updated_feed.new_entries.size} new entries found!"
         @last_entry[curr_feed_type] = updated_feed.entries.first
+        @latest_entries[curr_feed_type] ||= []
+        @latest_entries[curr_feed_type].unshift(*updated_feed.entries)
+        @latest_entries[curr_feed_type] = @latest_entries[curr_feed_type].take(10)
         updated_feed.new_entries.reverse.each do |entry|
           message = feed_entry_report(entry,curr_feed_type).to_s.strip
-          reply_msg message unless message.to_s.empty?
+          reply_msg message unless message.empty?
         end
       rescue => e
         reply_msg "Error while updating feed: #{e.message}"
@@ -239,19 +282,22 @@ class RssMonitor
   end
 
   def monitor_rss
-    puts "Fetching feed at #{FEED_URL}"
-    @feed = Feedzirra::Feed.fetch_and_parse(FEED_URL)
+    puts "Fetching activity feed at #{ACTIVITY_FEED_URL}"
+    @feed = Feedjira::Feed.fetch_and_parse(ACTIVITY_FEED_URL)
     puts "Fetching feed at #{GIT_FEED_URL}"
-    @new_feed = Feedzirra::Feed.fetch_and_parse(GIT_FEED_URL)
-    @feeds = {'Current' => @new_feed, 'Old' => @feed}
+    @new_feed = Feedjira::Feed.fetch_and_parse(GIT_FEED_URL)
+    @feeds = {'Git' => @new_feed, 'Activity' => @feed}
     @feeds.each do |curr_feed_type, curr_feed|
       puts "Checking #{curr_feed_type} feed"
       if curr_feed.kind_of?(Fixnum)
         reply_msg "Error with #{curr_feed_type} feed: #{curr_feed}"
       else
         @last_entry[curr_feed_type] = curr_feed.entries.first
+        @latest_entries[curr_feed_type] ||= []
+        @latest_entries[curr_feed_type].unshift(*curr_feed.entries)
+        @latest_entries[curr_feed_type] = @latest_entries[curr_feed_type].take(10)
         reply_msg "Last entry was: "
-        reply_msg feed_entry_report(@last_entry[curr_feed_type],curr_feed_type).strip
+        reply_msg @latest_entries[curr_feed_type].map{|entry|feed_entry_report(entry,curr_feed_type)}.compact.first
       end
     end
     $thread = Thread.new do
@@ -334,7 +380,7 @@ bot = Cinch::Bot.new do
   end
 
   on :message, "!help" do |m|
-    m.reply "Available commands: !latest, !daily, !last rss, !compilation guide, !faq, !forums, !commands, !setup guide, !roms, !diskmanipulator, !catapult, !keys, !renderers, !docs, !manual"
+    m.reply "Available commands: !latest, !daily, !last rss, !compilation guide, !faq, !forums, !commands, !setup guide, !roms, !diskmanipulator, !catapult, !keys, !renderers, !docs, !manual, !recent rss entries, !recent activity rss entries, !recent git rss entries, !feed urls"
   end
 
   on :message, "!github" do |m|
@@ -342,22 +388,27 @@ bot = Cinch::Bot.new do
   end
 
   on :message, "!last rss" do |m|
-    if $rss_monitor.last_entry.size > 0
+    if $rss_monitor.latest_entries.keys.size > 0
       # @.map{|feed_type, feed_entry| feed_entry_report(feed).strip}
-      $rss_monitor.last_entry.each do |feed_type, last_entry|
-        m.reply '[%s] %s' % [feed_type, $rss_monitor.feed_entry_report(last_entry,feed_type)]
+      $rss_monitor.latest_entries.each do |feed_type, entries|
+        message = entries.map{|entry| $rss_monitor.feed_entry_report(entry,feed_type)}.compact.first
+        m.reply '[%s] %s' % [feed_type, message] unless message.to_s.strip.empty?
       end
     else
       m.reply "No last rss feed entries found. Maybe start RSS monitoring first."
     end
   end
 
+  on :message, "!feed urls" do |m|
+    m.reply $rss_monitor.feed_urls.map{|k,url|"#{k}: #{url}"}.join(" — ")
+  end
+
   on :message, /!recent (\S*) ?rss entries/ do |m,feed_type|
-    puts "Fetching feed at #{RssMonitor::FEED_URL}"
-    @feed = Feedzirra::Feed.fetch_and_parse(RssMonitor::FEED_URL)
+    puts "Fetching activity feed at #{RssMonitor::ACTIVITY_FEED_URL}"
+    @feed = Feedjira::Feed.fetch_and_parse(RssMonitor::ACTIVITY_FEED_URL)
     puts "Fetching feed at #{RssMonitor::GIT_FEED_URL}"
-    @new_feed = Feedzirra::Feed.fetch_and_parse(RssMonitor::GIT_FEED_URL)
-    @feeds = {'Current' => @new_feed, 'Old' => @feed}
+    @new_feed = Feedjira::Feed.fetch_and_parse(RssMonitor::GIT_FEED_URL)
+    @feeds = {'Git' => @new_feed, 'Activity' => @feed}
     @feeds.select!{|k,v|k.downcase == feed_type.to_s.downcase.strip} if feed_type.to_s != ''
     @feeds.each do |curr_feed_type, curr_feed|
       puts "Checking #{curr_feed_type} feed"
